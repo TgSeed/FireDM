@@ -18,7 +18,7 @@ from . import config
 from .config import Status
 from .utils import (log, format_bytes, delete_file, rename_file, run_command)
 from .worker import Worker
-from .downloaditem import Segment
+from .downloaditem import DownloadItem, Segment
 
 
 def brain(d=None):
@@ -323,7 +323,7 @@ def file_manager(d, q, keep_segments=True):
     log(f'file_manager {d.uid}: quitting', log_level=2)
 
 
-def thread_manager(d, q):
+def thread_manager(d: DownloadItem, q):
     """create multiple worker threads to download file segments"""
 
     #   soft start, connections will be gradually increase over time to reach max. number
@@ -493,7 +493,7 @@ def thread_manager(d, q):
                         # create new segment
                         seg = Segment(name=os.path.join(d.temp_folder, f'{len(d.segments)}'), url=current_seg.url,
                                       tempfile=current_seg.tempfile, range=[middle + 1, end],
-                                      media_type=current_seg.media_type)
+                                      media_type=current_seg.media_type, proxy=d.proxy)
 
                         # add to segments
                         d.segments.append(seg)

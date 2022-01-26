@@ -15,6 +15,8 @@ import os
 import time
 import pycurl
 
+from .downloaditem import DownloadItem, Segment
+
 from .config import Status, error_q, jobs_q, max_seg_retries
 from .utils import log, set_curl_options, format_bytes, translate_server_code
 
@@ -22,8 +24,8 @@ from .utils import log, set_curl_options, format_bytes, translate_server_code
 class Worker:
     def __init__(self, tag=0, d=None):
         self.tag = tag
-        self.d = d
-        self.seg = None
+        self.d: DownloadItem = d
+        self.seg: Segment = None
         self.resume_range = None
 
         # writing data parameters
@@ -193,7 +195,8 @@ class Worker:
         # don't accept compressed contents
         self.d.http_headers['Accept-Encoding'] = '*;q=0'
 
-        set_curl_options(self.c, http_headers=self.d.http_headers)
+        set_curl_options(
+            self.c, http_headers=self.d.http_headers, proxy=self.seg.proxy)
 
         self.c.setopt(pycurl.URL, self.seg.url)
 
@@ -208,6 +211,8 @@ class Worker:
 
         # verbose
         self.c.setopt(pycurl.VERBOSE, 0)
+
+        self.c.setopt(pycurl.PROXY, self.d.proxy)
 
         # call back functions
         self.c.setopt(pycurl.HEADERFUNCTION, self.header_callback)

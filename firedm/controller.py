@@ -191,7 +191,7 @@ def download_thumbnail(d):
         # download thumbnail
         if d.status == Status.completed and d.thumbnail_url:
             fp = os.path.splitext(d.target_file)[0] + '.png'
-            download(d.thumbnail_url, fp=fp, decode=False)
+            download(d.thumbnail_url, fp=fp, decode=False, proxy=d.proxy)
 
     except Exception as e:
         log('controller._download_thumbnail()> error:', e)
@@ -217,13 +217,14 @@ def log_runtime_info():
     log(f'FFMPEG: {config.ffmpeg_actual_path}, version: {config.ffmpeg_version}')
 
 
-def create_video_playlist(url, ytdloptions=None, interrupt=False):
+def create_video_playlist(url, ytdloptions=None, interrupt=False, proxy: str = None):
     """Process url and build video object(s) and return a video playlist"""
 
     log('creating video playlist', log_level=2)
     playlist = []
 
-    info = get_media_info(url, ytdloptions=ytdloptions, interrupt=interrupt)
+    info = get_media_info(url, ytdloptions=ytdloptions,
+                          interrupt=interrupt, proxy=proxy)
 
     if not info:
         log('no video streams detected')
@@ -259,7 +260,8 @@ def create_video_playlist(url, ytdloptions=None, interrupt=False):
 
                 # vid.register_callback(self.observer)
         else:
-            processed_info = get_media_info(info=info, ytdloptions=ytdloptions)
+            processed_info = get_media_info(
+                info=info, ytdloptions=ytdloptions, proxy=proxy)
 
             if processed_info and processed_info.get('formats'):
 
@@ -287,15 +289,17 @@ def create_video_playlist(url, ytdloptions=None, interrupt=False):
     return playlist
 
 
-def url_to_playlist(url, ytdloptions=None):
+def url_to_playlist(url, ytdloptions=None, proxy: str = None):
     d = ObservableDownloadItem()
+    d.proxy = proxy or config.proxy
     d.update(url)
 
     playlist = None
 
     # searching for videos
     if d.type == 'text/html' or d.size < 1024 * 1024:  # 1 MB as a max size
-        playlist = create_video_playlist(url, ytdloptions=ytdloptions)
+        playlist = create_video_playlist(
+            url, ytdloptions=ytdloptions, proxy=proxy)
 
     if not playlist and d.type:
         playlist = [d]
@@ -1341,7 +1345,8 @@ class Controller:
             # if d type is hls video will download file to check if it's an m3u8 or not
             if 'hls' in d.subtype_list:
                 log('downloading subtitle', file_name)
-                data = download(url, http_headers=d.http_headers)
+                data = download(
+                    url, http_headers=d.http_headers, proxy=d.proxy)
 
                 # check if downloaded file is an m3u8 file
                 if data and '#EXT' in repr(data):  # why using repr(data) instead of data?

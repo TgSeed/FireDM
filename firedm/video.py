@@ -49,14 +49,20 @@ class Logger(object):
         return "youtube-dl Logger"
 
 
-def get_ytdl_options():
+def get_ytdl_options(proxy: str = None):
     # reference: https://github.com/ytdl-org/youtube-dl/blob/a8035827177d6b59aca03bd717acb6a9bdd75ada/youtube_dl/__init__.py#L317
     ydl_opts = {'ignoreerrors': True, 'logger': Logger()}  # 'prefer_insecure': False, 'no_warnings': False,
-    if config.proxy:
+    if (proxy and len(proxy.strip()) > 0) or config.proxy:
         # youtube-dl accept socks4a, but not socks5h,
         # https://github.com/ytdl-org/youtube-dl/blob/a8035827177d6b59aca03bd717acb6a9bdd75ada/youtube_dl/utils.py#L5404
-        proxy = config.proxy.replace('socks5h', 'socks5')
-        ydl_opts['proxy'] = proxy
+        if proxy and len(proxy.strip()) > 0:
+            proxy = proxy.strip()
+        else:
+            proxy = config.proxy
+        
+        if proxy is not None and len(proxy) > 0:
+            proxy = proxy.replace('socks5h', 'socks5')
+            ydl_opts['proxy'] = proxy
 
     # set Referer website
     if config.referer_url:
@@ -99,7 +105,7 @@ class Video(DownloadItem):
         self.vid_info = vid_info  # a youtube-dl dictionary contains video information
         # let youtube-dl fetch video info
         if self.vid_info is None:
-            with ytdl.YoutubeDL(get_ytdl_options()) as ydl:
+            with ytdl.YoutubeDL(get_ytdl_options(proxy=self.proxy)) as ydl:
                 self.vid_info = ydl.extract_info(url, download=False, process=True)
 
         self.webpage_url = self.vid_info.get('webpage_url', None) or url
@@ -183,7 +189,7 @@ class Video(DownloadItem):
         outtmpl = outtmpl.replace('.%(ext)s', '')
 
         # get global youtube_dl options
-        options = get_ytdl_options()
+        options = get_ytdl_options(proxy=self.proxy)
         options['outtmpl'] = outtmpl
 
         ydl = ytdl.YoutubeDL(options)
@@ -404,7 +410,8 @@ class Video(DownloadItem):
             try:
                 from PIL import Image
                 log('downloading Thumbnail', log_level=2)
-                buffer = download(self.thumbnail_url, verbose=False, return_buffer=True, decode=False)
+                buffer = download(self.thumbnail_url, verbose=False,
+                                  return_buffer=True, decode=False, proxy=self.proxy)
                 import awesometkinter
                 img = Image.open(buffer)
                 img = img.resize(size, resample=Image.LANCZOS)
@@ -839,7 +846,8 @@ def pre_process_hls(d):
     # maybe the playlist is a direct media playlist and not a master playlist
     if d.manifest_url:
         log('master manifest:   ', d.manifest_url)
-        master_m3u8 = download_m3u8(d.manifest_url, http_headers=d.http_headers)
+        master_m3u8 = download_m3u8(
+            d.manifest_url, http_headers=d.http_headers, proxy=d.proxy)
     else:
         log('No master manifest')
         master_m3u8 = None
@@ -856,7 +864,8 @@ def pre_process_hls(d):
             refresh_urls(master_m3u8, d.manifest_url)
 
     log('video m3u8:        ', d.eff_url)
-    video_m3u8 = download_m3u8(d.eff_url, http_headers=d.http_headers)
+    video_m3u8 = download_m3u8(
+        d.eff_url, http_headers=d.http_headers, proxy=d.proxy)
 
     # abort if no video_m3u8
     if not video_m3u8:
@@ -866,7 +875,8 @@ def pre_process_hls(d):
     audio_m3u8 = None
     if 'dash' in d.subtype_list:
         log('audio m3u8:        ', d.audio_url)
-        audio_m3u8 = download_m3u8(d.audio_url, http_headers=d.http_headers)
+        audio_m3u8 = download_m3u8(
+            d.audio_url, http_headers=d.http_headers, proxy=d.proxy)
 
     # save remote m3u8 files to disk
     with open(os.path.join(d.temp_folder, 'remote_video.m3u8'), 'w') as f:
@@ -1021,11 +1031,12 @@ def parse_m3u8_line(line):
     return info
 
 
-def download_m3u8(url, http_headers=config.http_headers):
+def download_m3u8(url, http_headers=config.http_headers, proxy: str = None):
     data = None
     try:
         # download the manifest from m3u8 file descriptor located at url
-        data = download(url, verbose=False, http_headers=http_headers)
+        data = download(url, verbose=False,
+                        http_headers=http_headers, proxy=proxy)
 
         # verify file is m3u8 format
         if data and '#EXT' in repr(data):
@@ -1085,7 +1096,7 @@ def download_sub(lang_name, url, extension, d):
         # if d type is hls video will download subtitle file to check if its type is m3u8 or not
         if 'hls' in d.subtype_list:
             log('downloading subtitle', file_name)
-            data = download(url, http_headers=d.http_headers)
+            data = download(url, http_headers=d.http_headers, proxy=d.proxy)
 
             # check if downloaded file is an m3u8 file
             if data and '#EXT' in repr(data):
@@ -1240,7 +1251,7 @@ class MediaPlaylist:
         :param m3u8_doc: string representation of m3u8_doc
         :param stream_type: video or audio
         """
-        self.d = d
+        self.d: DownloadItem = d
         self.url = url  # playlist url
         self.m3u8_doc = m3u8_doc
         self.stream_type = stream_type
@@ -1304,6 +1315,7 @@ class MediaPlaylist:
                 seg.url = next_line if not next_line.startswith('#') else None
                 seg.duration = self.seg_duration
                 seg.key = copy.copy(self.current_key)
+                seg.proxy = self.d.proxy
 
                 if seg.url:
                     if seg.url.startswith('skd://'):
@@ -1398,7 +1410,7 @@ class MediaPlaylist:
         return segment_list
 
 
-def get_media_info(url=None, info=None, ytdloptions=None, interrupt=False):
+def get_media_info(url=None, info=None, ytdloptions=None, interrupt=False, proxy: str = None):
     """this is an adapter function for youtube-dl to extract the video(s) information the URL refers to """
 
     url = url or info.get('url') or info.get('webpage_url')
@@ -1410,7 +1422,7 @@ def get_media_info(url=None, info=None, ytdloptions=None, interrupt=False):
             time.sleep(1)  # wait until module gets imported
 
     # get global youtube_dl options
-    options = get_ytdl_options()
+    options = get_ytdl_options(proxy)
 
     if ytdloptions:
         options.update(ytdloptions)
@@ -1449,13 +1461,13 @@ def get_media_info(url=None, info=None, ytdloptions=None, interrupt=False):
     return info
 
 
-def process_video(vid):
+def process_video(vid, proxy: str = None):
     """process video info and refresh Video object properties,
     typically required when video is a part of unprocessed video playlist"""
     try:
         vid.busy = True  # busy flag will be used to show progress bar or a busy mouse cursor
         # vid_info = self._process_video_info(vid.vid_info)
-        vid_info = get_media_info(info=vid.vid_info)
+        vid_info = get_media_info(info=vid.vid_info, proxy=proxy)
 
         if vid_info:
             vid.vid_info = vid_info

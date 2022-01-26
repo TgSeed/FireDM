@@ -24,7 +24,7 @@ from .config import MediaType
 
 class Segment:
     def __init__(self, name=None, num=None, range=None, size=0, url=None, tempfile=None, seg_type='', merge=True,
-                 media_type=MediaType.general, d=None):
+                 media_type=MediaType.general, d=None, proxy: str = ''):
         self.d = d  # reference to parent download item
         self.name = name  # full path file name
         # self.basename = os.path.basename(self.name)
@@ -37,6 +37,7 @@ class Segment:
         self.completed = False  # done downloading and merging into tempfile
         self.tempfile = tempfile
         self.headers = {}
+        self.proxy: str = proxy
         self.url = url
         self.seg_type = seg_type
         self.merge = merge
@@ -88,7 +89,8 @@ class Segment:
 
     def get_size(self):
         http_headers = self.d.http_headers if self.d else None
-        self.headers = get_headers(self.url, http_headers=http_headers)
+        self.headers = get_headers(
+            self.url, http_headers=http_headers, proxy=self.proxy)
         try:
             self.size = int(self.headers.get('content-length', 0))
             print('Segment num:', self.num, 'getting size:', self.size)
@@ -230,6 +232,9 @@ class DownloadItem:
 
         # http-headers
         self.http_headers = {}
+
+        # proxy
+        self.proxy: str = ''
 
         # metadata
         self.metadata_file_content = ''
@@ -517,7 +522,8 @@ class DownloadItem:
         if url in ('', None):
             return
 
-        headers = get_headers(url, http_headers=self.http_headers)
+        headers = get_headers(
+            url, http_headers=self.http_headers, proxy=self.proxy)
         # print('update d parameters:', headers)
 
         # update headers
@@ -588,7 +594,8 @@ class DownloadItem:
         if not resumable and size > config.SEGMENT_SIZE:
             # 'status_code': 206, 'content-length': '401', 'content-range': 'bytes 100-500/40772008'
             seg_range = [100, 500]  # test range 401 bytes
-            h = get_headers(url, seg_range=seg_range, http_headers=self.http_headers)
+            h = get_headers(url, seg_range=seg_range,
+                            http_headers=self.http_headers, proxy=self.proxy)
 
             if h.get('status_code') == 206 and int(h.get('content-length', 0)) == 401:
                 resumable = True
@@ -615,7 +622,7 @@ class DownloadItem:
             # example 'fragments': [{'path': 'range/0-640'}, {'path': 'range/2197-63702', 'duration': 9.985},]
             _segments = [Segment(name=os.path.join(self.temp_folder, str(i)), num=i, range=None, size=0,
                                  url=urljoin(self.fragment_base_url, x.get('path', '')), tempfile=self.temp_file,
-                                 media_type=MediaType.video)
+                                 media_type=MediaType.video, proxy=self.proxy)
                          for i, x in enumerate(self.fragments)]
 
         else:
@@ -628,7 +635,7 @@ class DownloadItem:
 
             _segments = [
                 Segment(name=os.path.join(self.temp_folder, str(i)), num=i, range=x,
-                        url=self.eff_url, tempfile=self.temp_file, media_type=self.type)
+                        url=self.eff_url, tempfile=self.temp_file, media_type=self.type, proxy=self.proxy)
                 for i, x in enumerate(range_list)]
 
         # get an audio stream to be merged with dash video
@@ -639,7 +646,7 @@ class DownloadItem:
                 audio_segments = [
                     Segment(name=os.path.join(self.temp_folder, str(i) + '_audio'), num=i, range=None, size=0,
                             url=urljoin(self.audio_fragment_base_url, x.get('path', '')), tempfile=self.audio_file,
-                            media_type=MediaType.audio)
+                            media_type=MediaType.audio, proxy=self.proxy)
                     for i, x in enumerate(self.audio_fragments)]
 
             else:
@@ -647,7 +654,7 @@ class DownloadItem:
 
                 audio_segments = [
                     Segment(name=os.path.join(self.temp_folder, str(i) + '_audio'), num=i, range=x,
-                            url=self.audio_url, tempfile=self.audio_file, media_type=MediaType.audio)
+                            url=self.audio_url, tempfile=self.audio_file, media_type=MediaType.audio, proxy=self.proxy)
                     for i, x in enumerate(range_list)]
 
             # append to main list
@@ -737,6 +744,8 @@ class DownloadItem:
                         else:
                             seg.tempfile = self.temp_file
                             seg.url = self.eff_url
+
+                        seg.proxy = self.proxy
 
                         self.segments.append(seg)
                     except:

@@ -72,7 +72,7 @@ def ignore_errors(func):
     return wraper
 
 
-def set_curl_options(c, http_headers=None):
+def set_curl_options(c, http_headers=None, proxy: str = None):
     """take pycurl object as an argument and set basic options
 
     Args:
@@ -103,6 +103,9 @@ def set_curl_options(c, http_headers=None):
     if config.proxy:
         c.setopt(pycurl.PROXY, config.proxy)
 
+    if proxy is not None:
+        c.setopt(pycurl.PROXY, proxy)
+
     # referer
     if config.referer_url:
         c.setopt(pycurl.REFERER, config.referer_url)
@@ -124,7 +127,8 @@ def set_curl_options(c, http_headers=None):
 
     c.setopt(pycurl.NOSIGNAL, 1)  # option required for multithreading safety
     c.setopt(pycurl.NOPROGRESS, 1)
-    c.setopt(pycurl.CAINFO, certifi.where())  # for https sites and ssl cert handling
+    # for https sites and ssl cert handling
+    c.setopt(pycurl.CAINFO, certifi.where())
     c.setopt(pycurl.PROXY_CAINFO, certifi.where())
 
     # /* set this to 1L to allow HTTP/0.9 responses or 0L to disallow */
@@ -139,7 +143,8 @@ def set_curl_options(c, http_headers=None):
         c.setopt(pycurl.SSL_VERIFYHOST, 0)
 
     # time out
-    c.setopt(pycurl.CONNECTTIMEOUT, 10)  # limits the connection phase, it has no impact once it has connected.
+    # limits the connection phase, it has no impact once it has connected.
+    c.setopt(pycurl.CONNECTTIMEOUT, 10)
 
     # abort if download speed slower than 1024 byte/sec during 10 seconds
     c.setopt(pycurl.LOW_SPEED_LIMIT, 1024)
@@ -161,7 +166,7 @@ def set_curl_options(c, http_headers=None):
     c.setopt(pycurl.ACCEPT_ENCODING, '')
 
 
-def get_headers(url, verbose=False, http_headers=None, seg_range=None):
+def get_headers(url, verbose=False, http_headers=None, seg_range=None, proxy: str = None):
     """return dictionary of headers"""
 
     log('get_headers()> getting headers for:', url, log_level=3)
@@ -177,7 +182,8 @@ def get_headers(url, verbose=False, http_headers=None, seg_range=None):
 
         key, value = header_line.split(':', 1)
         key = key.strip().lower()  # lower() key for easy comparison
-        value = value.strip()  # don't lower(), it will affect important values, e.g. filename, issue #330
+        # don't lower(), it will affect important values, e.g. filename, issue #330
+        value = value.strip()
         curl_headers[key] = value
         if verbose:
             print(key, ':', value)
@@ -197,7 +203,7 @@ def get_headers(url, verbose=False, http_headers=None, seg_range=None):
     c = pycurl.Curl()
 
     # set general curl options
-    set_curl_options(c, http_headers)
+    set_curl_options(c, http_headers, proxy)
 
     # set special curl options
     c.setopt(pycurl.URL, url)
@@ -205,7 +211,8 @@ def get_headers(url, verbose=False, http_headers=None, seg_range=None):
     c.setopt(pycurl.HEADERFUNCTION, header_callback)
 
     if seg_range:
-        c.setopt(pycurl.RANGE, f'{seg_range[0]}-{seg_range[1]}')  # download segment only not the whole file
+        # download segment only not the whole file
+        c.setopt(pycurl.RANGE, f'{seg_range[0]}-{seg_range[1]}')
     # endregion
 
     try:
@@ -224,7 +231,7 @@ def get_headers(url, verbose=False, http_headers=None, seg_range=None):
     return curl_headers
 
 
-def download(url, fp=None, verbose=True, http_headers=None, decode=True, return_buffer=False, seg_range=None):
+def download(url, fp=None, verbose=True, http_headers=None, decode=True, return_buffer=False, seg_range=None, proxy: str = None):
     """
     simple file download, into bytesio buffer and store it on disk if file_name is given
 
@@ -252,13 +259,14 @@ def download(url, fp=None, verbose=True, http_headers=None, decode=True, return_
 
     def set_options():
         # set general curl options
-        set_curl_options(c, http_headers)
+        set_curl_options(c, http_headers, proxy)
 
         # set special curl options
         c.setopt(pycurl.URL, url)
 
         if seg_range:
-            c.setopt(pycurl.RANGE, f'{seg_range[0]}-{seg_range[1]}')  # download segment only not the whole file
+            # download segment only not the whole file
+            c.setopt(pycurl.RANGE, f'{seg_range[0]}-{seg_range[1]}')
 
     # pycurl initialize
     c = pycurl.Curl()
@@ -330,7 +338,8 @@ def simpledownload(url, fp=None, return_data=True, overwrite=False):
             elapsed_time = time.time() - start
 
             if elapsed_time:
-                speed = format_bytes(round(len(chunk) / elapsed_time, 1), tail='/s')
+                speed = format_bytes(
+                    round(len(chunk) / elapsed_time, 1), tail='/s')
             else:
                 speed = ''
             percent = done * 100 // size if size else 0
@@ -355,7 +364,9 @@ def simpledownload(url, fp=None, return_data=True, overwrite=False):
         return True
 
 
-my_print=print# replaced on cli mode
+my_print = print  # replaced on cli mode
+
+
 def log(*args, log_level=1, start='>> ', end='\n', sep=' ', showpopup=False, **kwargs):
     """print messages to stdout and execute any function or method in config.log_callbacks
 
@@ -415,7 +426,8 @@ def validate_file_name(fname):
         # max. allowed filename length 255 on windows,
         # https://docs.microsoft.com/en-us/windows/win32/fileio/naming-a-file?redirectedfrom=MSDN
         if len(clean_name) > 255:
-            clean_name = clean_name[0:245] + clean_name[-10:]  # add last 10 characters "including file extension"
+            # add last 10 characters "including file extension"
+            clean_name = clean_name[0:245] + clean_name[-10:]
     except:
         clean_name = fname
 
@@ -454,7 +466,8 @@ def rename_file(oldname=None, newname=None, verbose=False):
         return False
     try:
         shutil.move(oldname, newname)
-        log('done renaming file:', oldname, '... to:', newname, start='\n', log_level=3)
+        log('done renaming file:', oldname, '... to:',
+            newname, start='\n', log_level=3)
         return True
     except Exception as e:
         if verbose:
@@ -474,7 +487,7 @@ def run_command(cmd, verbose=True, shell=False, hide_window=True, d=None, nonblo
         hide_window: True or False, hide shell window
         d: DownloadItem object mainly use "status" property to terminate subprocess
         nonblocking: if True, run subprocess and exit in other words it will not block until finish subprocess
-    
+
     Return:
         error (True or False), output (string of stdout/stderr output)
     """
@@ -561,7 +574,8 @@ def update_object(obj, new_values):
             try:
                 setattr(obj, k, v)
             except AttributeError:  # in case of read only attribute
-                log(f"update_object(): can't update property: {k}, with value: {v}")
+                log(
+                    f"update_object(): can't update property: {k}, with value: {v}")
             except Exception as e:
                 log(f'update_object(): error, {e}, property: {k}, value: {v}')
     return obj
@@ -676,7 +690,8 @@ def open_file(fp, silent=False):
         # run command
         if silent:
             # ignore output, useful when playing video files, to stop player junk to fill up terminal
-            subprocess.Popen(shlex.split(cmd), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.Popen(shlex.split(
+                cmd), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         else:
             subprocess.Popen(shlex.split(cmd))
 
@@ -687,7 +702,7 @@ def open_file(fp, silent=False):
 def open_folder(path):
     """
     open target folder in file manager and select the file if path is file
-    
+
     Args:
         path: path to folder or file
 
@@ -755,8 +770,9 @@ def natural_sort(my_list):
         >>> sorted(['c2', 'c10', 'c1'])
         ['c1', 'c10', 'c2']
     """
-    convert = lambda text: int(text) if text.isdigit() else text
-    alphanum_key = lambda key: [convert(c) for c in re.split('([0-9]+)', key)]
+    def convert(text): return int(text) if text.isdigit() else text
+    def alphanum_key(key): return [convert(c)
+                                   for c in re.split('([0-9]+)', key)]
     return sorted(my_list, key=alphanum_key)
 
 
@@ -783,7 +799,8 @@ def format_seconds(t, tail='', sep=' ', percision=1, fullunit=False):
 
     try:
         t = int(t)
-        units = ['second', 'minute', 'hour', 'day', 'month', 'year'] if fullunit else ['s', 'm', 'h', 'D', 'M', 'Y']
+        units = ['second', 'minute', 'hour', 'day', 'month',
+                 'year'] if fullunit else ['s', 'm', 'h', 'D', 'M', 'Y']
         thresholds = [1, 60, 3600, 86400, 2592000, 31536000]
 
         if t >= 0:
@@ -1038,7 +1055,7 @@ def calc_md5_sha256(fp=None, buffer=None):
 def get_range_list(file_size, minsize):
     """
     return a list of ranges to improve watch while downloading feature
-    
+
     Args:
         file_size(int): file size in bytes
         minsize(int): minimum segment size
@@ -1063,7 +1080,7 @@ def get_range_list(file_size, minsize):
     range_list = []
 
     sizes = []
-    # make first segments smaller to finish quickly and be ready for watch while 
+    # make first segments smaller to finish quickly and be ready for watch while
     # downloading other segments
     for i in (5, 10, 15, 20):  # 5%, 10%, etc..
         sizes.append(i * file_size // 100)
@@ -1196,10 +1213,12 @@ def get_pkg_version(pkg):
         fp = os.path.join(pkg_path, 'version.py')
         with open(fp) as f:
             txt = f.read()
-            exec(txt, version_module)  # then we can use it as: version_module['__version__']
+            # then we can use it as: version_module['__version__']
+            exec(txt, version_module)
             version = version_module.get('__version__')
             if not version:
-                match = re.search(r'_*version_*=[\'\"](.*?)[\'\"]', txt.replace(' ', ''), re.IGNORECASE)
+                match = re.search(
+                    r'_*version_*=[\'\"](.*?)[\'\"]', txt.replace(' ', ''), re.IGNORECASE)
                 version = match.groups()[0]
     except:
         pass
@@ -1222,7 +1241,8 @@ def get_pkg_version(pkg):
             pkg_name = os.path.basename(pkg_path)
 
             for folder_name in os.listdir(parent_folder):
-                match = re.match(pkg_name + r'-(.*?)\.dist-info', folder_name, re.IGNORECASE)
+                match = re.match(pkg_name + r'-(.*?)\.dist-info',
+                                 folder_name, re.IGNORECASE)
                 if match:
                     version = match.groups()[0]
                     break
